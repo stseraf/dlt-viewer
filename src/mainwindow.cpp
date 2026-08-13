@@ -96,17 +96,7 @@ namespace {
 // decode (a desync from the wrong width), retry with the uint8 layout.
 qdlt::msg::payload::Type parseCtrlMsg(const QByteArray& payload, bool isBigEndian)
 {
-    using namespace qdlt::msg::payload;
-    auto result = parse(payload, isBigEndian, DescriptionLengthWidth::Uint16);
-    if (const auto* uninteresting = std::get_if<Uninteresting>(&result);
-            uninteresting && uninteresting->parseError &&
-            uninteresting->serviceId == DLT_SERVICE_ID_GET_LOG_INFO) {
-        auto retry = parse(payload, isBigEndian, DescriptionLengthWidth::Uint8);
-        if (!std::holds_alternative<Uninteresting>(retry)) {
-            return retry;
-        }
-    }
-    return result;
+    return qdlt::msg::payload::parseAutoDetect(payload, isBigEndian);
 }
 } // namespace
 
