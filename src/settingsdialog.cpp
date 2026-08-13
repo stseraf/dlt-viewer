@@ -278,6 +278,7 @@ void SettingsDialog::writeDlg()
     ui->lineEditPluginsAutoload->setText(settings->pluginsAutoloadPathName);
     ui->checkBoxFilterCache->setCheckState(settings->filterCache?Qt::Checked:Qt::Unchecked);
     ui->checkBoxAutoConnect->setCheckState(settings->autoConnect?Qt::Checked:Qt::Unchecked);
+    ui->checkBoxExclusiveConnect->setCheckState(settings->exclusiveConnect?Qt::Checked:Qt::Unchecked);
     ui->checkBoxSupportDLTV2Decoding->setCheckState(settings->supportDLTv2Decoding?Qt::Checked:Qt::Unchecked);
     ui->checkBoxAutoScroll->setCheckState(settings->autoScroll?Qt::Checked:Qt::Unchecked);
     ui->checkBoxAutoMarkFatalError->setCheckState(settings->autoMarkFatalError?Qt::Checked:Qt::Unchecked);
@@ -455,6 +456,7 @@ void SettingsDialog::readDlg()
     settings->pluginsAutoloadPathName = ui->lineEditPluginsAutoload->text();
     settings->filterCache = (ui->checkBoxFilterCache->checkState() == Qt::Checked);
     settings->autoConnect = (ui->checkBoxAutoConnect->checkState() == Qt::Checked);
+    settings->exclusiveConnect = (ui->checkBoxExclusiveConnect->checkState() == Qt::Checked);
     settings->supportDLTv2Decoding = (ui->checkBoxSupportDLTV2Decoding->checkState() == Qt::Checked);
     settings->autoScroll = (ui->checkBoxAutoScroll->checkState() == Qt::Checked);
     settings->autoMarkFatalError = (ui->checkBoxAutoMarkFatalError->checkState() == Qt::Checked);

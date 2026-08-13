@@ -90,6 +90,7 @@ public:
 
     int markercolorRed,markercolorGreen,markercolorBlue; // local and project setting
     int autoConnect; // project and local setting
+    int exclusiveConnect; // project and local setting
     int supportDLTv2Decoding; // project and local setting
     int autoScroll; // project and local setting
     int autoMarkFatalError; // local and local setting

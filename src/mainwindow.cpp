@@ -4093,10 +4093,26 @@ void MainWindow::connectAll()
         on_action_menuConfig_ECU_Add_triggered();
     }
 
-    for(int num = 0; num < project.ecu->topLevelItemCount (); num++)
+    if(settings && settings->exclusiveConnect)
     {
-        EcuItem *ecuitem = (EcuItem*)project.ecu->topLevelItem(num);
-        connectECU(ecuitem);
+        /* Only one connection at a time is allowed: connect the ECU selected in
+         * the project tree, or the first one if nothing is selected. */
+        EcuItem *ecuitem = 0;
+        ApplicationItem* appitem = 0;
+        ContextItem* conitem = 0;
+        getSelectedItems(&ecuitem,&appitem,&conitem);
+        if(!ecuitem && project.ecu->topLevelItemCount() > 0)
+            ecuitem = (EcuItem*)project.ecu->topLevelItem(0);
+        if(ecuitem)
+            connectECU(ecuitem);
+    }
+    else
+    {
+        for(int num = 0; num < project.ecu->topLevelItemCount (); num++)
+        {
+            EcuItem *ecuitem = (EcuItem*)project.ecu->topLevelItem(num);
+            connectECU(ecuitem);
+        }
     }
 
     // periodically update table view to account for the new incoming messages
@@ -4211,6 +4227,18 @@ void MainWindow::connectECU(EcuItem* ecuitem,bool force)
             crlfFilterWindow = nullptr;
         }
         
+        /* Only one ECU may be connected at a time: drop all other connections
+         * first, so that no other ECU keeps retrying in timeout(). */
+        if(settings && settings->exclusiveConnect)
+        {
+            for(int num = 0; num < project.ecu->topLevelItemCount(); num++)
+            {
+                EcuItem *other = (EcuItem*)project.ecu->topLevelItem(num);
+                if(other != ecuitem)
+                    disconnectECU(other);
+            }
+        }
+
         // because it does not work reliably during live logging.
         if(settings && settings->includeManualMarkersInFilter)
             clearManualMarkerUnionInFilter();
