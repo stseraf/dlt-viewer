@@ -958,6 +958,9 @@
    <property name="text">
     <string>Get Log Info</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+I</string>
+   </property>
   </action>
   <action name="action_menuDLT_Set_Log_Level">
    <property name="enabled">
@@ -965,6 +968,9 @@
    </property>
    <property name="text">
     <string>Set Log Level</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+L</string>
    </property>
   </action>
   <action name="action_menuDLT_Set_All_Log_Levels">
