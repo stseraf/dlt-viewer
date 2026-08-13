@@ -87,6 +87,29 @@
 #include "updatechecker.h"
 #include "filespliting.h"
 
+namespace {
+// Parse a control-message payload, transparently handling the two GET_LOG_INFO
+// description-length wire encodings. COVESA dlt-daemon / dlt-control and the
+// Wireshark dissector encode the app/context description lengths as uint16, while
+// the AUTOSAR PRS_Dlt spec (PRS_Dlt_00197) and Vector tooling use uint8. Try the
+// COVESA/uint16 layout first; if the response is a GET_LOG_INFO that failed to
+// decode (a desync from the wrong width), retry with the uint8 layout.
+qdlt::msg::payload::Type parseCtrlMsg(const QByteArray& payload, bool isBigEndian)
+{
+    using namespace qdlt::msg::payload;
+    auto result = parse(payload, isBigEndian, DescriptionLengthWidth::Uint16);
+    if (const auto* uninteresting = std::get_if<Uninteresting>(&result);
+            uninteresting && uninteresting->parseError &&
+            uninteresting->serviceId == DLT_SERVICE_ID_GET_LOG_INFO) {
+        auto retry = parse(payload, isBigEndian, DescriptionLengthWidth::Uint8);
+        if (!std::holds_alternative<Uninteresting>(retry)) {
+            return retry;
+        }
+    }
+    return result;
+}
+} // namespace
+
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -2632,7 +2655,7 @@ void MainWindow::reloadLogFileFinishFilter()
         EcuTree ecuTree;
         for (const auto msgIndex : msgIndexList) {
             if (qfile.getMsg(msgIndex, msg)) {
-                auto ctrlMsg = qdlt::msg::payload::parse(msg.getPayload(), msg.getEndianness() == QDlt::DltEndiannessBigEndian);
+                auto ctrlMsg = parseCtrlMsg(msg.getPayload(), msg.getEndianness() == QDlt::DltEndiannessBigEndian);
                 std::visit([&ecuTree, ecuId = msg.getEcuid()](auto&& payload) {
                     using T = std::decay_t<decltype(payload)>;
                     if constexpr (std::is_same_v<T, qdlt::msg::payload::GetLogInfo>) {
@@ -5113,7 +5136,7 @@ void MainWindow::onSearchresultsTableSelectionChanged(const QItemSelection & sel
 void MainWindow::controlMessage_ReceiveControlMessage(EcuItem *ecuitem, const QDltMsg &msg)
 {
     try {
-        auto ctrlMsg = qdlt::msg::payload::parse(
+        auto ctrlMsg = parseCtrlMsg(
                     msg.getPayload(), msg.getEndianness() == QDlt::DltEndiannessBigEndian);
         std::visit(
                     overloaded{

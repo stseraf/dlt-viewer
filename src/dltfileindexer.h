@@ -22,14 +22,14 @@ class DltFileIndexerKey
 {
 public:
     DltFileIndexerKey(time_t time, unsigned int microseconds, int index);
-    DltFileIndexerKey(unsigned int timestamp, int index);
+    DltFileIndexerKey(quint64 timestamp, int index);
 
     friend bool operator< (const DltFileIndexerKey &key1, const DltFileIndexerKey &key2);
 
 private:
     time_t time;
     unsigned int microseconds;
-    unsigned int timestamp;
+    quint64 timestamp;
     int index;
 };
 

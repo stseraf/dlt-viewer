@@ -797,13 +797,18 @@ bool QDltMsg::setMsg(const QByteArray& buf, bool withStorageHeader,bool supportD
                                (((quint64)(*((quint8*) (buf.constData() + headerLength + 6 + sizeStorageHeader))))<<16)|
                                (((quint64)(*((quint8*) (buf.constData() + headerLength + 7 + sizeStorageHeader))))<<8)|
                                (((quint64)(*((quint8*) (buf.constData() + headerLength + 8 + sizeStorageHeader)))));
+            // Bit 31 of the nanoseconds field flags the time base: clear = absolute
+            // UTC time, set = relative time since ECU startup. Strip the flag before
+            // using the nanoseconds value in any arithmetic below.
+            const bool isUtcTimestamp = !(timestampNanoseconds & 0x80000000);
+            timestampNanoseconds &= 0x7fffffff;
+            // 0.1 ms ticks; timestamp is 64-bit so the 5-byte seconds field does not overflow.
             timestamp = (timestampSeconds * (quint64)10000) + ((quint64)timestampNanoseconds / (quint64)100000ul);
-            if(!(timestampNanoseconds&0x80000000)) //Bit 31 is set on the timestamp. UTC timestamp
+            if(isUtcTimestamp)
             {
-                timestampNanoseconds &= 0x7fffffff;
                 time = timestampSeconds;
             }
-            else //Bit 31 is not set on the timestamp. Time since ECU startup
+            else // relative time since ECU startup: fall back to the storage header arrival time
             {
                 if(storageheader) {
                     time = storageHeaderTimestampSeconds;
@@ -1118,7 +1123,7 @@ bool QDltMsg::getMsg(QByteArray &buf,bool withStorageHeader) {
         buf += QByteArray((const char *)&(headerextra.ecu),sizeof(headerextra.ecu));
         headerextra.seid = DLT_SWAP_32(sessionid);
         buf += QByteArray((const char *)&(headerextra.seid),sizeof(headerextra.seid));
-        headerextra.tmsp = DLT_SWAP_32(timestamp);
+        headerextra.tmsp = DLT_SWAP_32((quint32)timestamp); // v1 wire timestamp is 32-bit
         buf += QByteArray((const char *)&(headerextra.tmsp),sizeof(headerextra.tmsp));
     }
 

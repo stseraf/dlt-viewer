@@ -58,9 +58,12 @@ IdType dltPayloadReadId(const char *&dataPtr, int32_t &length)
     return id;
 }
 
-std::string dltPayloadReadString(const char *&dataPtr, int32_t &length, bool isBigEndian)
+std::string dltPayloadReadString(const char *&dataPtr, int32_t &length, bool isBigEndian,
+                                 DescriptionLengthWidth descLenWidth)
 {
-    uint16_t strLength = dltPayloadRead<uint16_t>(dataPtr, length, isBigEndian);
+    uint16_t strLength = (descLenWidth == DescriptionLengthWidth::Uint8)
+                             ? dltPayloadRead<uint8_t>(dataPtr, length, isBigEndian)
+                             : dltPayloadRead<uint16_t>(dataPtr, length, isBigEndian);
     if (length < 0 || strLength > length) {
         throw std::runtime_error(QString("Invalid string length %1 > %2").arg(strLength).arg(length).toStdString());
     }
@@ -73,7 +76,7 @@ std::string dltPayloadReadString(const char *&dataPtr, int32_t &length, bool isB
 }
 }
 
-Type parse(const QByteArray& data, bool isBigEndian)
+Type parse(const QByteArray& data, bool isBigEndian, DescriptionLengthWidth descLenWidth)
 {
     int32_t length = data.length();
     const char *dataPtr = data.data();
@@ -100,11 +103,11 @@ Type parse(const QByteArray& data, bool isBigEndian)
                     ctx.id = asQString(dltPayloadReadId(dataPtr, length));
                     ctx.logLevel = dltPayloadRead<int8_t>(dataPtr, length, isBigEndian);
                     ctx.traceStatus = dltPayloadRead<int8_t>(dataPtr, length, isBigEndian);
-                    ctx.description = QString::fromStdString(dltPayloadReadString(dataPtr, length, isBigEndian));
+                    ctx.description = QString::fromStdString(dltPayloadReadString(dataPtr, length, isBigEndian, descLenWidth));
                     app.ctxs.push_back(std::move(ctx));
                 }
                 if (msg.status == 7) {
-                    app.description = QString::fromStdString(dltPayloadReadString(dataPtr, length, isBigEndian));
+                    app.description = QString::fromStdString(dltPayloadReadString(dataPtr, length, isBigEndian, descLenWidth));
                 }
                 msg.apps.push_back(std::move(app));
             }

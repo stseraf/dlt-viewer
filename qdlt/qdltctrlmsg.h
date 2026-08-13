@@ -63,7 +63,18 @@ struct Uninteresting {
 using Type = std::variant<GetLogInfo, GetSoftwareVersion, GetDefaultLogLevel, SetLogLevel, Timezone,
                           UnregisterContext, Uninteresting>;
 
-QDLT_EXPORT Type parse(const QByteArray&, bool isBigEndian);
+// Wire-format width of the GET_LOG_INFO (status 7) description-length fields.
+// The AUTOSAR PRS_Dlt spec (PRS_Dlt_00197) defines these as uint8, but the COVESA
+// dlt-daemon / dlt-control and the Wireshark DLT dissector encode them as uint16.
+// Must match the daemon that produced the response, otherwise every field after the
+// first description desyncs.
+enum class DescriptionLengthWidth {
+    Uint16, // COVESA dlt-daemon / Wireshark (default)
+    Uint8,  // AUTOSAR PRS_Dlt / Vector
+};
+
+QDLT_EXPORT Type parse(const QByteArray&, bool isBigEndian,
+                       DescriptionLengthWidth descLenWidth = DescriptionLengthWidth::Uint16);
 
 } // namespace qdlt::msg::payload
 

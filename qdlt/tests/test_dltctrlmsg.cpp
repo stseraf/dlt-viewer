@@ -26,3 +26,26 @@ TEST(CtrlPayload, parse) {
     EXPECT_EQ(ctx.traceStatus, '\xff');
     EXPECT_EQ(ctx.description, "Context of main dlt system manager");
 }
+
+TEST(CtrlPayload, parseUint8DescriptionLength) {
+    // Same response as above but with AUTOSAR/Vector uint8 (1-byte) description
+    // lengths (0x22 and 0x12) instead of the COVESA uint16 (0x2200 / 0x1200).
+    const auto data = QByteArray::fromHex("030000000701005359530001004d475200ffff22436f6e74657874206f66206d61696e20646c742073797374656d206d616e6167657212444c542053797374656d204d616e6167657272656d6f");
+
+    auto payload = qdlt::msg::payload::parse(data, false,
+                                             qdlt::msg::payload::DescriptionLengthWidth::Uint8);
+
+    ASSERT_TRUE(std::holds_alternative<qdlt::msg::payload::GetLogInfo>(payload));
+    auto getLogInfo = std::get<qdlt::msg::payload::GetLogInfo>(payload);
+    EXPECT_EQ(getLogInfo.status, 7);
+    ASSERT_EQ(getLogInfo.apps.size(), 1);
+
+    auto app = getLogInfo.apps[0];
+    EXPECT_EQ(app.id, "SYS");
+    EXPECT_EQ(app.description, "DLT System Manager");
+    ASSERT_EQ(app.ctxs.size(), 1);
+
+    auto ctx = app.ctxs[0];
+    EXPECT_EQ(ctx.id, "MGR");
+    EXPECT_EQ(ctx.description, "Context of main dlt system manager");
+}

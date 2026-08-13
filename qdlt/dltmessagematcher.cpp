@@ -59,7 +59,7 @@ bool DltMessageMatcher::matchCtxId(const QString& ctxId) const
     return m_ctxId.isEmpty() || ctxId.compare(m_ctxId, m_caseSensitivity) == 0;
 }
 
-bool DltMessageMatcher::matchTimestampRange(unsigned int ts) const
+bool DltMessageMatcher::matchTimestampRange(quint64 ts) const
 {
     if (!m_timestampRange)
         return true;
