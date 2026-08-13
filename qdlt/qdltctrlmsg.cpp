@@ -89,9 +89,24 @@ Type parse(const QByteArray& data, bool isBigEndian, DescriptionLengthWidth desc
         {
             GetLogInfo msg;
             msg.status = dltPayloadRead<uint8_t>(dataPtr, length, isBigEndian);
-            if ((msg.status != 6) && (msg.status != 7)) {
+
+            /* The status mirrors the options value of the request and tells which
+             * fields follow each context id:
+             *   3 - application and context ids only
+             *   4 - ... with log level
+             *   5 - ... with trace status
+             *   6 - ... with log level and trace status
+             *   7 - ... with log level, trace status and descriptions
+             * Any other status (1 not supported, 2 error, 8 no matching context
+             * id) carries no application data at all. Reading a description for
+             * a status 6 response - which does not transmit one - desynchronises
+             * the whole payload and makes it undecodable. */
+            if ((msg.status < 3) || (msg.status > 7)) {
                 return msg;
             }
+            msg.hasLogLevel = (msg.status == 4) || (msg.status == 6) || (msg.status == 7);
+            msg.hasTraceStatus = (msg.status == 5) || (msg.status == 6) || (msg.status == 7);
+            msg.hasDescription = (msg.status == 7);
 
             const auto numApps = dltPayloadRead<uint16_t>(dataPtr, length, isBigEndian);
             for (uint16_t i = 0; i < numApps; i++) {
@@ -101,12 +116,18 @@ Type parse(const QByteArray& data, bool isBigEndian, DescriptionLengthWidth desc
                 for (uint16_t j = 0; j < numCtx; j++) {
                     GetLogInfo::App::Ctx ctx;
                     ctx.id = asQString(dltPayloadReadId(dataPtr, length));
-                    ctx.logLevel = dltPayloadRead<int8_t>(dataPtr, length, isBigEndian);
-                    ctx.traceStatus = dltPayloadRead<int8_t>(dataPtr, length, isBigEndian);
-                    ctx.description = QString::fromStdString(dltPayloadReadString(dataPtr, length, isBigEndian, descLenWidth));
+                    if (msg.hasLogLevel) {
+                        ctx.logLevel = dltPayloadRead<int8_t>(dataPtr, length, isBigEndian);
+                    }
+                    if (msg.hasTraceStatus) {
+                        ctx.traceStatus = dltPayloadRead<int8_t>(dataPtr, length, isBigEndian);
+                    }
+                    if (msg.hasDescription) {
+                        ctx.description = QString::fromStdString(dltPayloadReadString(dataPtr, length, isBigEndian, descLenWidth));
+                    }
                     app.ctxs.push_back(std::move(ctx));
                 }
-                if (msg.status == 7) {
+                if (msg.hasDescription) {
                     app.description = QString::fromStdString(dltPayloadReadString(dataPtr, length, isBigEndian, descLenWidth));
                 }
                 msg.apps.push_back(std::move(app));
@@ -269,9 +290,9 @@ QList<Field> describeRequest(const QByteArray& data, bool isBigEndian)
             switch (options) {
             case 3: optionsText += " (ids only)"; break;
             case 4: optionsText += " (with log level)"; break;
-            case 5: optionsText += " (with log level and trace status)"; break;
-            case 6: optionsText += " (with context description)"; break;
-            case 7: optionsText += " (with context and application description)"; break;
+            case 5: optionsText += " (with trace status)"; break;
+            case 6: optionsText += " (with log level and trace status)"; break;
+            case 7: optionsText += " (with log level, trace status and descriptions)"; break;
             default: break;
             }
             fields.append({QString("options"), optionsText});
@@ -352,9 +373,9 @@ QList<Field> describeResponse(const QByteArray& data, bool isBigEndian)
             case 2: statusText += " (error)"; break;
             case 3: statusText += " (ids only)"; break;
             case 4: statusText += " (with log level)"; break;
-            case 5: statusText += " (with log level and trace status)"; break;
-            case 6: statusText += " (with context description)"; break;
-            case 7: statusText += " (with context and application description)"; break;
+            case 5: statusText += " (with trace status)"; break;
+            case 6: statusText += " (with log level and trace status)"; break;
+            case 7: statusText += " (with log level, trace status and descriptions)"; break;
             case 8: statusText += " (no matching context id)"; break;
             default: break;
             }

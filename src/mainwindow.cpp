@@ -5175,8 +5175,10 @@ void MainWindow::controlMessage_ReceiveControlMessage(EcuItem *ecuitem, const QD
                             if (payload.status == 6 || payload.status == 7) {
                                 for (const auto& app : payload.apps) {
                                     for (const auto& ctx : app.ctxs) {
+                                        /* A status 6 response carries no descriptions; keep the
+                                         * ones already known instead of clearing them. */
                                         controlMessage_SetContext(ecuitem, app.id, ctx.id, ctx.description,
-                                        ctx.logLevel, ctx.traceStatus);
+                                        ctx.logLevel, ctx.traceStatus, payload.hasDescription);
                                     }
                                     if (payload.status == 7) {
                                         controlMessage_SetApplication(ecuitem, app.id, app.description);
@@ -5912,7 +5914,7 @@ void MainWindow::controlMessage_SetApplication(EcuItem *ecuitem, QString apid, Q
     }
 }
 
-void MainWindow::controlMessage_SetContext(EcuItem *ecuitem, QString apid, QString ctid,QString ctdescription,int log_level,int trace_status)
+void MainWindow::controlMessage_SetContext(EcuItem *ecuitem, QString apid, QString ctid,QString ctdescription,int log_level,int trace_status,bool updateDescription)
 {
     if (auto appitem = ecuitem->find(apid); appitem) {
 
@@ -5931,7 +5933,9 @@ void MainWindow::controlMessage_SetContext(EcuItem *ecuitem, QString apid, QStri
         conitem->id = ctid;
         conitem->loglevel = log_level;
         conitem->tracestatus = trace_status;
-        conitem->description = ctdescription;
+        if (updateDescription) {
+            conitem->description = ctdescription;
+        }
         conitem->status = ContextItem::valid;
         conitem->update();
     } else {
