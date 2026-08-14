@@ -315,7 +315,7 @@ private:
     void controlMessage_GetSoftwareVersion(EcuItem* ecuitem);
     void controlMessage_GetLogInfo(EcuItem* ecuitem, QString app = "", QString con = "", int options = 7);
     void controlMessage_ReceiveControlMessage(EcuItem *ecuitem, const QDltMsg &msg);
-    void controlMessage_SetContext(EcuItem *ecuitem, QString apid, QString ctid,QString ctdescription,int log_level,int trace_status);
+    void controlMessage_SetContext(EcuItem *ecuitem, QString apid, QString ctid,QString ctdescription,int log_level,int trace_status,bool updateDescription = true);
     void controlMessage_SetApplication(EcuItem *ecuitem, QString apid, QString appdescription);
     void controlMessage_Marker();
 

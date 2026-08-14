@@ -49,7 +49,7 @@ QString getLogInfoTable(const QByteArray &payload, bool isBigEndian)
 
     QString text = QString("<h3>Applications</h3>");
     if(info->apps.empty()) {
-        if((info->status != 6) && (info->status != 7)) {
+        if((info->status < 3) || (info->status > 7)) {
             return text + QString("Response status %1 carries no application data.").arg(info->status);
         }
         return text + QString("No applications reported.");
@@ -70,8 +70,8 @@ QString getLogInfoTable(const QByteArray &payload, bool isBigEndian)
             text += QString("<td>%1</td>").arg(first?escapeHtml(app.id):QString());
             text += QString("<td>%1</td>").arg(first?escapeHtml(app.description):QString());
             text += QString("<td>%1</td>").arg(escapeHtml(ctx.id));
-            text += QString("<td>%1</td>").arg(logLevelString(ctx.logLevel));
-            text += QString("<td>%1</td>").arg(traceStatusString(ctx.traceStatus));
+            text += QString("<td>%1</td>").arg(info->hasLogLevel?logLevelString(ctx.logLevel):QString());
+            text += QString("<td>%1</td>").arg(info->hasTraceStatus?traceStatusString(ctx.traceStatus):QString());
             text += QString("<td>%1</td>").arg(escapeHtml(ctx.description));
             text += QString("</tr>");
             first = false;

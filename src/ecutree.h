@@ -14,8 +14,8 @@ struct EcuTree
     using CtxId = QString;
     struct Ctx {
         QString description;
-        int8_t logLevel;
-        int8_t traceStatus;
+        int8_t logLevel = -1;
+        int8_t traceStatus = -1;
     };
     struct App {
         QString description;

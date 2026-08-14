@@ -17,8 +17,8 @@ struct GetLogInfo {
     struct App {
         struct Ctx {
             QString id;
-            int8_t logLevel;
-            int8_t traceStatus;
+            int8_t logLevel = -1;
+            int8_t traceStatus = -1;
             QString description;
         };
 
@@ -29,6 +29,14 @@ struct GetLogInfo {
 
     uint8_t status;
     std::vector<App> apps;
+
+    /* Which per context fields the response actually carries is defined by its
+     * status, which mirrors the options value of the request. Fields that are
+     * not transmitted keep their default value and must not be taken as the
+     * ECU's real setting - check these flags first. */
+    bool hasLogLevel = false;
+    bool hasTraceStatus = false;
+    bool hasDescription = false;
 };
 
 struct GetSoftwareVersion {
