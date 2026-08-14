@@ -21,6 +21,69 @@
 
 #include "dltviewerplugin.h"
 
+#include "qdltctrlmsg.h"
+#include "dlt_protocol.h"
+
+namespace {
+
+QString escapeHtml(const QString &str)
+{
+    QString escaped = str;
+    escaped = escaped.replace("<","&#60;");
+    escaped = escaped.replace(">","&#62;");
+    return escaped;
+}
+
+/* Render the application/context tree of a get_log_info response, one row per
+ * context. Fields the response does not carry (depending on its options value)
+ * are left empty. */
+QString getLogInfoTable(const QByteArray &payload, bool isBigEndian)
+{
+    using namespace qdlt::msg::payload;
+
+    const Type parsed = parseAutoDetect(payload,isBigEndian);
+    const GetLogInfo *info = std::get_if<GetLogInfo>(&parsed);
+    if(!info) {
+        return QString("<h3>Applications</h3>Payload could not be decoded.");
+    }
+
+    QString text = QString("<h3>Applications</h3>");
+    if(info->apps.empty()) {
+        if((info->status != 6) && (info->status != 7)) {
+            return text + QString("Response status %1 carries no application data.").arg(info->status);
+        }
+        return text + QString("No applications reported.");
+    }
+
+    text += QString("<table border=\"1\" cellspacing=\"0\" cellheader=\"0\">");
+    text += QString("<tr><th>Apid</th><th>App Description</th><th>Ctid</th>"
+                    "<th>Log Level</th><th>Trace Status</th><th>Context Description</th></tr>");
+    for(const auto &app : info->apps) {
+        if(app.ctxs.empty()) {
+            text += QString("<tr><td>%1</td><td>%2</td><td colspan=\"4\"></td></tr>")
+                        .arg(escapeHtml(app.id)).arg(escapeHtml(app.description));
+            continue;
+        }
+        bool first = true;
+        for(const auto &ctx : app.ctxs) {
+            text += QString("<tr>");
+            text += QString("<td>%1</td>").arg(first?escapeHtml(app.id):QString());
+            text += QString("<td>%1</td>").arg(first?escapeHtml(app.description):QString());
+            text += QString("<td>%1</td>").arg(escapeHtml(ctx.id));
+            text += QString("<td>%1</td>").arg(logLevelString(ctx.logLevel));
+            text += QString("<td>%1</td>").arg(traceStatusString(ctx.traceStatus));
+            text += QString("<td>%1</td>").arg(escapeHtml(ctx.description));
+            text += QString("</tr>");
+            first = false;
+        }
+    }
+    text += QString("</table>");
+
+    return text;
+}
+
+} // namespace
+
 DltViewerPlugin::DltViewerPlugin() {
     form = NULL;
     dltFile = 0;
@@ -108,14 +171,47 @@ void DltViewerPlugin::selectedIdxMsg(int index, QDltMsg &msg) {
     text += QString("</tr></table>");
 
     if(msg.getType()==QDltMsg::DltTypeControl) {
+        /* The return type is only part of a response payload; for requests the
+         * value is not transmitted at all and would be shown as a bogus "ok". */
+        const bool isResponse = (msg.getSubtype()==QDltMsg::DltControlResponse);
+
         text += QString("<h3>Control Message</h3>");
         text += QString("<table border=\"1\" cellspacing=\"0\" cellheader=\"0\">");
-        text += QString("<tr><th>MessageId</th><th>CtrlServiceId</th><th>CtrlReturnType</th></tr>");
+        text += QString("<tr><th>MessageId</th><th>CtrlServiceId</th>");
+        if(isResponse)
+            text += QString("<th>CtrlReturnType</th>");
+        text += QString("</tr>");
         text += QString("<tr>");
         text += QString("<td>%1</td>").arg(msg.getMessageId());
         text += QString("<td>%1</td>").arg(msg.getCtrlServiceIdString());
-        text += QString("<td>%1</td>").arg(msg.getCtrlReturnTypeString());
+        if(isResponse)
+            text += QString("<td>%1</td>").arg(msg.getCtrlReturnTypeString());
         text += QString("</tr></table>");
+
+        const bool isBigEndian = (msg.getEndianness()==QDlt::DltEndiannessBigEndian);
+        const QList<qdlt::msg::payload::Field> fields =
+            isResponse ? qdlt::msg::payload::describeResponse(msg.getPayload(),isBigEndian)
+                       : qdlt::msg::payload::describeRequest(msg.getPayload(),isBigEndian);
+
+        text += QString("<h3>Parameters</h3>");
+        if(fields.isEmpty()) {
+            text += QString("This service carries no parameters.");
+        }
+        else {
+            text += QString("<table border=\"1\" cellspacing=\"0\" cellheader=\"0\">");
+            text += QString("<tr><th>Name</th><th>Value</th></tr>");
+            for(const auto &field : fields) {
+                text += QString("<tr><td>%1</td><td>%2</td></tr>")
+                            .arg(stringToHtml(field.name)).arg(stringToHtml(field.value));
+            }
+            text += QString("</table>");
+        }
+
+        /* The application/context tree of a get_log_info response needs a table
+         * of its own, one row per context. */
+        if(isResponse && msg.getCtrlServiceId()==DLT_SERVICE_ID_GET_LOG_INFO) {
+            text += getLogInfoTable(msg.getPayload(),isBigEndian);
+        }
     }
     else {
         text += QString("<h3>Payload</h3>");

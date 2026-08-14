@@ -883,6 +883,16 @@
              </widget>
             </item>
             <item>
+             <widget class="QCheckBox" name="checkBoxExclusiveConnect">
+          <property name="toolTip">
+           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If enabled, only one ECU is connected at a time. Connecting an ECU disconnects all others, and 'Connect All' connects only the ECU selected in the project tree (or the first one). Useful if all ECUs are reached through a gateway which accepts only a single connection.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          </property>
+          <property name="text">
+           <string>Connect only to one (selected) ECU at a time</string>
+          </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QCheckBox" name="checkBoxAutoScroll">
           <property name="text">
            <string>Auto scroll</string>

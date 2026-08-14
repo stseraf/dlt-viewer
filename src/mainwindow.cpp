@@ -87,6 +87,19 @@
 #include "updatechecker.h"
 #include "filespliting.h"
 
+namespace {
+// Parse a control-message payload, transparently handling the two GET_LOG_INFO
+// description-length wire encodings. COVESA dlt-daemon / dlt-control and the
+// Wireshark dissector encode the app/context description lengths as uint16, while
+// the AUTOSAR PRS_Dlt spec (PRS_Dlt_00197) and Vector tooling use uint8. Try the
+// COVESA/uint16 layout first; if the response is a GET_LOG_INFO that failed to
+// decode (a desync from the wrong width), retry with the uint8 layout.
+qdlt::msg::payload::Type parseCtrlMsg(const QByteArray& payload, bool isBigEndian)
+{
+    return qdlt::msg::payload::parseAutoDetect(payload, isBigEndian);
+}
+} // namespace
+
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -2632,7 +2645,7 @@ void MainWindow::reloadLogFileFinishFilter()
         EcuTree ecuTree;
         for (const auto msgIndex : msgIndexList) {
             if (qfile.getMsg(msgIndex, msg)) {
-                auto ctrlMsg = qdlt::msg::payload::parse(msg.getPayload(), msg.getEndianness() == QDlt::DltEndiannessBigEndian);
+                auto ctrlMsg = parseCtrlMsg(msg.getPayload(), msg.getEndianness() == QDlt::DltEndiannessBigEndian);
                 std::visit([&ecuTree, ecuId = msg.getEcuid()](auto&& payload) {
                     using T = std::decay_t<decltype(payload)>;
                     if constexpr (std::is_same_v<T, qdlt::msg::payload::GetLogInfo>) {
@@ -3485,11 +3498,11 @@ void MainWindow::on_action_menuConfig_Context_Add_triggered()
             appitem->addChild(conitem);
 
             /* send new default log level to ECU, if connected and if selected in dlg */
+            /* trace status is intentionally not sent here, only log level */
             if(dlg.update())
             {
                 EcuItem* ecuitem = (EcuItem*) appitem->parent();
                 controlMessage_SetLogLevel(ecuitem,appitem->id,conitem->id,conitem->loglevel);
-                controlMessage_SetTraceStatus(ecuitem,appitem->id,conitem->id,conitem->tracestatus);
 
                 /* update status */
                 conitem->status = ContextItem::valid;
@@ -3677,6 +3690,7 @@ void MainWindow::on_configWidget_customContextMenuRequested(QPoint pos)
     else if((list.count() == 1) && (list.at(0)->type() == ecu_type))
     {
         /* ECU is selected */
+        EcuItem* ecuitem = (EcuItem*) list.at(0);
 
         action = new QAction("ECU Add...", &menu);
         connect(action, SIGNAL(triggered()), this, SLOT(on_action_menuConfig_ECU_Add_triggered()));
@@ -3731,7 +3745,8 @@ void MainWindow::on_configWidget_customContextMenuRequested(QPoint pos)
         menu.addSeparator();
 
         action = new QAction("DLT Get Log Info", &menu);
-        connect(action, SIGNAL(triggered()), this, SLOT(on_action_menuDLT_Get_Log_Info_triggered()));
+        /* right-click on ECU always requests the full info, including descriptions (option 7) */
+        connect(action, &QAction::triggered, this, [this, ecuitem]() { controlMessage_GetLogInfo(ecuitem); });
         menu.addAction(action);
 
         action = new QAction("DLT Set All Log Levels", &menu);
@@ -4078,10 +4093,26 @@ void MainWindow::connectAll()
         on_action_menuConfig_ECU_Add_triggered();
     }
 
-    for(int num = 0; num < project.ecu->topLevelItemCount (); num++)
+    if(settings && settings->exclusiveConnect)
     {
-        EcuItem *ecuitem = (EcuItem*)project.ecu->topLevelItem(num);
-        connectECU(ecuitem);
+        /* Only one connection at a time is allowed: connect the ECU selected in
+         * the project tree, or the first one if nothing is selected. */
+        EcuItem *ecuitem = 0;
+        ApplicationItem* appitem = 0;
+        ContextItem* conitem = 0;
+        getSelectedItems(&ecuitem,&appitem,&conitem);
+        if(!ecuitem && project.ecu->topLevelItemCount() > 0)
+            ecuitem = (EcuItem*)project.ecu->topLevelItem(0);
+        if(ecuitem)
+            connectECU(ecuitem);
+    }
+    else
+    {
+        for(int num = 0; num < project.ecu->topLevelItemCount (); num++)
+        {
+            EcuItem *ecuitem = (EcuItem*)project.ecu->topLevelItem(num);
+            connectECU(ecuitem);
+        }
     }
 
     // periodically update table view to account for the new incoming messages
@@ -4196,6 +4227,18 @@ void MainWindow::connectECU(EcuItem* ecuitem,bool force)
             crlfFilterWindow = nullptr;
         }
         
+        /* Only one ECU may be connected at a time: drop all other connections
+         * first, so that no other ECU keeps retrying in timeout(). */
+        if(settings && settings->exclusiveConnect)
+        {
+            for(int num = 0; num < project.ecu->topLevelItemCount(); num++)
+            {
+                EcuItem *other = (EcuItem*)project.ecu->topLevelItem(num);
+                if(other != ecuitem)
+                    disconnectECU(other);
+            }
+        }
+
         // because it does not work reliably during live logging.
         if(settings && settings->includeManualMarkersInFilter)
             clearManualMarkerUnionInFilter();
@@ -5113,7 +5156,7 @@ void MainWindow::onSearchresultsTableSelectionChanged(const QItemSelection & sel
 void MainWindow::controlMessage_ReceiveControlMessage(EcuItem *ecuitem, const QDltMsg &msg)
 {
     try {
-        auto ctrlMsg = qdlt::msg::payload::parse(
+        auto ctrlMsg = parseCtrlMsg(
                     msg.getPayload(), msg.getEndianness() == QDlt::DltEndiannessBigEndian);
         std::visit(
                     overloaded{
@@ -5265,9 +5308,10 @@ void MainWindow::controlMessage_SendControlMessage(EcuItem* ecuitem,DltMessage &
     }
     else
     {
-        /* ECU is not connected */
-        qDebug() << "ECU is not connected !!";
-        return;
+        /* ECU is not connected: nothing is transmitted, but the constructed
+         * request is still stored below so its encoded payload can be
+         * previewed locally in the message table. */
+        qDebug() << "ECU is not connected, previewing request locally without sending !!";
     }
 
     /* Skip the file handling, if indexer is working on the file */
@@ -5417,9 +5461,8 @@ void MainWindow::on_action_menuDLT_Set_Log_Level_triggered()
         ApplicationItem* appitem = (ApplicationItem*) conitem->parent();
         EcuItem* ecuitem = (EcuItem*) appitem->parent();
 
-        /* send set log level and trace status request */
+        /* send set log level request only; trace status is left untouched here */
         controlMessage_SetLogLevel(ecuitem,appitem->id,conitem->id,conitem->loglevel);
-        controlMessage_SetTraceStatus(ecuitem,appitem->id,conitem->id,conitem->tracestatus);
 
         /* update status */
         conitem->status = ContextItem::valid;
@@ -5435,19 +5478,26 @@ void MainWindow::on_action_menuDLT_Set_Log_Level_triggered()
                 ApplicationItem* appitem = (ApplicationItem*) conitem->parent();
                 EcuItem* ecuitem = (EcuItem*) appitem->parent();
 
-                /* send set log level and trace status request */
+                /* send set log level request only; trace status is left untouched here */
                 controlMessage_SetLogLevel(ecuitem,appitem->id,conitem->id,conitem->loglevel);
-                controlMessage_SetTraceStatus(ecuitem,appitem->id,conitem->id,conitem->tracestatus);
 
                 /* update status */
                 conitem->status = ContextItem::valid;
                 conitem->update();
             }
         }
+    }else if((list.count() == 1) && (list.at(0)->type() == application_type)){
+        ApplicationItem* appitem = (ApplicationItem*) list.at(0);
+        EcuItem* ecuitem = (EcuItem*) appitem->parent();
+
+        /* single request with a wildcard (zeroed) context ID applies to all
+         * contexts of this application; ECU's default log level is used
+         * since ApplicationItem has no log level of its own */
+        controlMessage_SetLogLevel(ecuitem,appitem->id,"",ecuitem->loglevel);
     }
     else
         QMessageBox::warning(0, QString("DLT Viewer"),
-                             QString("No Context selected in configuration!"));
+                             QString("No Context or Application selected in configuration!"));
 }
 
 void MainWindow::on_action_menuDLT_Set_All_Log_Levels_triggered()
@@ -5486,16 +5536,30 @@ void MainWindow::on_action_menuDLT_Set_All_Log_Levels_triggered()
 
 void MainWindow::on_action_menuDLT_Get_Log_Info_triggered()
 {
-    /* get selected ECU in configuration */
+    /* get selected item in configuration: ECU, application or context */
+    /* triggered from the DLT menu / toolbar: request without descriptions (option 6) */
     QList<QTreeWidgetItem *> list = project.ecu->selectedItems();
     if((list.count() == 1) && (list.at(0)->type() == ecu_type))
     {
         EcuItem* ecuitem = (EcuItem*) list.at(0);
-        controlMessage_GetLogInfo(ecuitem);
+        controlMessage_GetLogInfo(ecuitem, "", "", 6);
+    }
+    else if((list.count() == 1) && (list.at(0)->type() == application_type))
+    {
+        ApplicationItem* appitem = (ApplicationItem*) list.at(0);
+        EcuItem* ecuitem = (EcuItem*) appitem->parent();
+        controlMessage_GetLogInfo(ecuitem, appitem->id, "", 6);
+    }
+    else if((list.count() == 1) && (list.at(0)->type() == context_type))
+    {
+        ContextItem* conitem = (ContextItem*) list.at(0);
+        ApplicationItem* appitem = (ApplicationItem*) conitem->parent();
+        EcuItem* ecuitem = (EcuItem*) appitem->parent();
+        controlMessage_GetLogInfo(ecuitem, appitem->id, conitem->id, 6);
     }
     else
         QMessageBox::warning(0, QString("DLT Viewer"),
-                             QString("No ECU selected in configuration!"));
+                             QString("No ECU, application or context selected in configuration!"));
 }
 
 void MainWindow::controlMessage_SetLogLevel(EcuItem* ecuitem, QString app, QString con,
@@ -5563,12 +5627,12 @@ void MainWindow::controlMessage_SetTimingPackets(EcuItem* ecuitem, bool enable) 
     controlMessage_SendControlMessage(ecuitem, msgWrapper.getMessage(), "", "");
 }
 
-void MainWindow::controlMessage_GetLogInfo(EcuItem* ecuitem) {
+void MainWindow::controlMessage_GetLogInfo(EcuItem* ecuitem, QString app, QString con, int options) {
     DltServiceGetLogInfoRequest req;
     req.service_id = DLT_SERVICE_ID_GET_LOG_INFO;
-    req.options = 7;
-    dlt_set_id(req.apid, "");
-    dlt_set_id(req.ctid, "");
+    req.options = options;
+    dlt_set_id(req.apid, app.toLatin1());
+    dlt_set_id(req.ctid, con.toLatin1());
     dlt_set_id(req.com, "remo");
 
     QDltMsgWrapper msgWrapper(std::move(req));
@@ -6013,6 +6077,8 @@ void MainWindow::on_actionShortcuts_List_triggered(){
     const QString shortcutPrevMark = "F5";
     const QString shortcutInfo = "F1";
     const QString shortcutQuit = "Ctrl + Q";
+    const QString shortcutSetLogLevel = "Ctrl + Shift + L";
+    const QString shortcutGetLogInfo = "Ctrl + Shift + I";
 
     // Store shortcuts dynamically using a list of pairs
     QList<QPair<QString, QString>> shortcutsList = {
@@ -6036,6 +6102,8 @@ void MainWindow::on_actionShortcuts_List_triggered(){
         {"Previous marked line", shortcutPrevMark},
         {"Info", shortcutInfo},
         {"Quit", shortcutQuit},
+        {"DLT Set Log Level", shortcutSetLogLevel},
+        {"DLT Get Log Info", shortcutGetLogInfo},
     };
 
     for (int i = 0; i < shortcutsList.size(); ++i) {
@@ -6112,16 +6180,20 @@ void MainWindow::on_configWidget_itemSelectionChanged()
 
     getSelectedItems(&ecuitem,&appitem,&conitem);
 
-    ui->action_menuDLT_Get_Default_Log_Level->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Set_Default_Log_Level->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Get_Local_Time_2->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Get_Software_Version->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Store_Config->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Get_Log_Info->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Set_Log_Level->setEnabled(conitem && ecuitem->connected);
-    ui->action_menuDLT_Set_All_Log_Levels->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Reset_to_Factory_Default->setEnabled(ecuitem && ecuitem->connected && !appitem);
-    ui->action_menuDLT_Send_Injection->setEnabled(ecuitem && ecuitem->connected && !appitem);
+    /* All DLT control requests can be previewed locally (their encoded payload
+     * written into the trace view) even while the ECU is disconnected, see
+     * controlMessage_SendControlMessage(). Enablement therefore only depends
+     * on what is selected in the configuration tree, not on connection state. */
+    ui->action_menuDLT_Get_Default_Log_Level->setEnabled(ecuitem && !appitem);
+    ui->action_menuDLT_Set_Default_Log_Level->setEnabled(ecuitem && !appitem);
+    ui->action_menuDLT_Get_Local_Time_2->setEnabled(ecuitem && !appitem);
+    ui->action_menuDLT_Get_Software_Version->setEnabled(ecuitem && !appitem);
+    ui->action_menuDLT_Store_Config->setEnabled(ecuitem && !appitem);
+    ui->action_menuDLT_Get_Log_Info->setEnabled(ecuitem != 0);
+    ui->action_menuDLT_Set_Log_Level->setEnabled(conitem != 0 || appitem != 0);
+    ui->action_menuDLT_Set_All_Log_Levels->setEnabled(ecuitem && !appitem);
+    ui->action_menuDLT_Reset_to_Factory_Default->setEnabled(ecuitem && !appitem);
+    ui->action_menuDLT_Send_Injection->setEnabled(ecuitem && !appitem);
     ui->action_menuDLT_Edit_All_Log_Levels->setEnabled(ecuitem);
 
     ui->action_menuConfig_Application_Add->setEnabled(ecuitem && !appitem);

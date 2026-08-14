@@ -55,7 +55,7 @@ public:
 private:
     bool matchAppId(const QString& appId) const;
     bool matchCtxId(const QString& ctxId) const;
-    bool matchTimestampRange(unsigned int ts) const;
+    bool matchTimestampRange(quint64 ts) const;
     bool matchTimeRangeMs(qint64 msSinceEpoch) const;
 private:
     QString m_ctxId;

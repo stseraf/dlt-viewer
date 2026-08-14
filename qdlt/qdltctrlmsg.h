@@ -7,6 +7,7 @@
 #include <variant>
 
 #include <QByteArray>
+#include <QList>
 #include <QString>
 
 
@@ -63,7 +64,45 @@ struct Uninteresting {
 using Type = std::variant<GetLogInfo, GetSoftwareVersion, GetDefaultLogLevel, SetLogLevel, Timezone,
                           UnregisterContext, Uninteresting>;
 
-QDLT_EXPORT Type parse(const QByteArray&, bool isBigEndian);
+// Wire-format width of the GET_LOG_INFO (status 7) description-length fields.
+// The AUTOSAR PRS_Dlt spec (PRS_Dlt_00197) defines these as uint8, but the COVESA
+// dlt-daemon / dlt-control and the Wireshark DLT dissector encode them as uint16.
+// Must match the daemon that produced the response, otherwise every field after the
+// first description desyncs.
+enum class DescriptionLengthWidth {
+    Uint16, // COVESA dlt-daemon / Wireshark (default)
+    Uint8,  // AUTOSAR PRS_Dlt / Vector
+};
+
+QDLT_EXPORT Type parse(const QByteArray&, bool isBigEndian,
+                       DescriptionLengthWidth descLenWidth = DescriptionLengthWidth::Uint16);
+
+// Same as parse(), but transparently handles the two GET_LOG_INFO description
+// length encodings: the COVESA/uint16 layout is tried first and, if a
+// GET_LOG_INFO response desyncs on it, the AUTOSAR/uint8 layout is retried.
+QDLT_EXPORT Type parseAutoDetect(const QByteArray&, bool isBigEndian);
+
+// One decoded parameter of a control message payload.
+struct Field {
+    QString name;
+    QString value;
+};
+
+// Decodes the parameters of a control REQUEST payload (everything behind the
+// service id) into printable name/value pairs. Services without parameters
+// yield an empty list; a truncated or unknown payload yields a single entry
+// holding the remaining raw bytes.
+QDLT_EXPORT QList<Field> describeRequest(const QByteArray& payload, bool isBigEndian);
+
+// Decodes a control RESPONSE payload into printable name/value pairs. The
+// nested application/context data of a GET_LOG_INFO response is not included
+// here - use parseAutoDetect() for that.
+QDLT_EXPORT QList<Field> describeResponse(const QByteArray& payload, bool isBigEndian);
+
+// Human readable form of a control response status / log level / trace status.
+QDLT_EXPORT QString statusString(uint8_t status);
+QDLT_EXPORT QString logLevelString(int8_t logLevel);
+QDLT_EXPORT QString traceStatusString(int8_t traceStatus);
 
 } // namespace qdlt::msg::payload
 

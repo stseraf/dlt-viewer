@@ -138,6 +138,7 @@ void QDltSettingsManager::writeSettingsLocal(QXmlStreamWriter &xml)
 
         xml.writeStartElement("other");
             xml.writeTextElement("autoConnect",QString("%1").arg(autoConnect));
+            xml.writeTextElement("exclusiveConnect",QString("%1").arg(exclusiveConnect));
             xml.writeTextElement("supportDLTv2Decoding",QString("%1").arg(supportDLTv2Decoding));
             xml.writeTextElement("autoScroll",QString("%1").arg(autoScroll));
             xml.writeTextElement("autoMarkFatalError",QString("%1").arg(autoMarkFatalError));
@@ -188,6 +189,7 @@ void QDltSettingsManager::writeSettings()
     settings->setValue("startup/pluginsAutoloadPathName",pluginsAutoloadPathName);
     settings->setValue("startup/filterCache",filterCache);
     settings->setValue("startup/autoConnect",autoConnect);
+    settings->setValue("startup/exclusiveConnect",exclusiveConnect);
     settings->setValue("startup/supportDLTv2Decoding",supportDLTv2Decoding);
     settings->setValue("startup/autoScroll",autoScroll);
     settings->setValue("startup/autoMarkFatalError",autoMarkFatalError);
@@ -257,6 +259,10 @@ void QDltSettingsManager::readSettingsLocal(QXmlStreamReader &xml)
     if(xml.name() == QString("autoConnect"))
     {
         autoConnect = xml.readElementText().toInt();
+    }
+    if(xml.name() == QString("exclusiveConnect"))
+    {
+        exclusiveConnect = xml.readElementText().toInt();
     }
     if(xml.name() == QString("supportDLTv2Decoding"))
     {
@@ -462,6 +468,7 @@ void QDltSettingsManager::readSettings()
     pluginsAutoloadPathName = settings->value("startup/pluginsAutoloadPathName",QString("")).toString();
     filterCache = settings->value("startup/filterCache",1).toInt();
     autoConnect = settings->value("startup/autoConnect",0).toInt();
+    exclusiveConnect = settings->value("startup/exclusiveConnect",0).toInt();
     supportDLTv2Decoding = settings->value("startup/supportDLTv2Decoding",0).toInt();
     autoScroll = settings->value("startup/autoScroll",1).toInt();
     autoMarkFatalError = settings->value("startup/autoMarkFatalError",0).toInt();

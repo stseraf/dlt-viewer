@@ -27,7 +27,7 @@ DltFileIndexerKey::DltFileIndexerKey(time_t time, unsigned int microseconds, int
     this->index = index;
 }
 
-DltFileIndexerKey::DltFileIndexerKey(unsigned int timestamp, int index)
+DltFileIndexerKey::DltFileIndexerKey(quint64 timestamp, int index)
     : time(0)
     , microseconds(0)
 {
