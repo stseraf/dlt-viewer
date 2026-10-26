@@ -3749,6 +3749,10 @@ void MainWindow::on_configWidget_customContextMenuRequested(QPoint pos)
         connect(action, &QAction::triggered, this, [this, ecuitem]() { controlMessage_GetLogInfo(ecuitem); });
         menu.addAction(action);
 
+        action = new QAction("DLT Set Log Level (all applications and contexts)", &menu);
+        connect(action, SIGNAL(triggered()), this, SLOT(on_action_menuDLT_Set_Log_Level_triggered()));
+        menu.addAction(action);
+
         action = new QAction("DLT Set All Log Levels", &menu);
         connect(action, SIGNAL(triggered()), this, SLOT(on_action_menuDLT_Set_All_Log_Levels_triggered()));
         menu.addAction(action);
@@ -5496,10 +5500,16 @@ void MainWindow::on_action_menuDLT_Set_Log_Level_triggered()
          * contexts of this application; ECU's default log level is used
          * since ApplicationItem has no log level of its own */
         controlMessage_SetLogLevel(ecuitem,appitem->id,"",ecuitem->loglevel);
+    }else if((list.count() == 1) && (list.at(0)->type() == ecu_type)){
+        EcuItem* ecuitem = (EcuItem*) list.at(0);
+
+        /* single request with wildcard (zeroed) application and context IDs
+         * applies to the whole ECU; ECU's default log level is used */
+        controlMessage_SetLogLevel(ecuitem,"","",ecuitem->loglevel);
     }
     else
         QMessageBox::warning(0, QString("DLT Viewer"),
-                             QString("No Context or Application selected in configuration!"));
+                             QString("No ECU, Context or Application selected in configuration!"));
 }
 
 void MainWindow::on_action_menuDLT_Set_All_Log_Levels_triggered()
@@ -6194,7 +6204,7 @@ void MainWindow::on_configWidget_itemSelectionChanged()
     ui->action_menuDLT_Get_Software_Version->setEnabled(ecuitem && !appitem);
     ui->action_menuDLT_Store_Config->setEnabled(ecuitem && !appitem);
     ui->action_menuDLT_Get_Log_Info->setEnabled(ecuitem != 0);
-    ui->action_menuDLT_Set_Log_Level->setEnabled(conitem != 0 || appitem != 0);
+    ui->action_menuDLT_Set_Log_Level->setEnabled(ecuitem != 0);
     ui->action_menuDLT_Set_All_Log_Levels->setEnabled(ecuitem && !appitem);
     ui->action_menuDLT_Reset_to_Factory_Default->setEnabled(ecuitem && !appitem);
     ui->action_menuDLT_Send_Injection->setEnabled(ecuitem && !appitem);
